@@ -17,6 +17,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.nio.charset.StandardCharsets;
 import java.rmi.RemoteException;
 import java.rmi.server.UnicastRemoteObject;
 import java.time.LocalDateTime;
@@ -24,11 +25,9 @@ import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Map;
-import java.util.Vector;
 import net.jini.core.entry.Entry;
 import net.jini.core.event.RemoteEventListener;
 import net.jini.core.event.UnknownEventException;
-import net.jini.core.lookup.ServiceID;
 import net.jini.lookup.JoinManager;
 import net.jini.lookup.ServiceIDListener;
 import net.jini.lookup.entry.Name;
@@ -57,7 +56,7 @@ public class ChatServer
      * registered clients. Class LinkedList is not thread-safe, so access
      * to it must be synchronized.
      */
-    protected LinkedList<String> msgQueue = new LinkedList<String>();
+    protected LinkedList<String> msgQueue = new LinkedList<>();
 
     /**
      * The notification objects of registered clients are held in this
@@ -70,7 +69,7 @@ public class ChatServer
             new HashMap<>();
 
     protected Map<RemoteEventListener, Integer> clientMsgs =
-            new HashMap<>();
+            new HashMap<RemoteEventListener, Integer>();
 
     /**
      * The printed name of this server instance.
@@ -104,9 +103,9 @@ public class ChatServer
         String host = InetAddress.getLocalHost().getHostName().toLowerCase();
 
         String idName = (name == null) ? "" : name.trim();
-      if (idName.isEmpty()) {
-        idName = System.getProperty("user.name") + "'s";
-      }
+        if (idName.isEmpty()) {
+            idName = System.getProperty("user.name") + "'s";
+        }
 
         serverName = idName + " chatserver on " + host;
 
@@ -119,11 +118,7 @@ public class ChatServer
         // Create an IDListener instance to tell us when we have
         // registered with a lookup server.
         ServiceIDListener sidListener =
-                new ServiceIDListener() {
-                    public void serviceIDNotify(ServiceID sid) {
-                        System.out.println("Registered as a Jini service " + sid);
-                    }
-                };
+                sid -> System.out.println("Registered as a Jini service " + sid);
 
         // Create a Join manager that will hunt out any Jini lookup servers
         // out there and register us with them.
@@ -173,13 +168,13 @@ public class ChatServer
      * @return The next message, or null if the queue is empty.
      */
     protected String getNextMessage() {
-      if (msgQueue.isEmpty()) {
-        return null;
-      } else {
-        synchronized (msgQueue) {
-          return msgQueue.removeFirst();
+        if (msgQueue.isEmpty()) {
+            return null;
+        } else {
+            synchronized (msgQueue) {
+                return msgQueue.removeFirst();
+            }
         }
-      }
     }
 
     /**
@@ -205,14 +200,15 @@ public class ChatServer
      * @param rel The RemoteEventListener implementation to remove.
      */
     protected void removeClient(RemoteEventListener rel) throws UnknownEventException, RemoteException {
-        System.out.println("Client was connected: " + ChronoUnit.MINUTES.between(clients.get(rel), LocalDateTime.now()) + " minutes.");
-        System.out.println("Client has sent " + clientMsgs.get(rel) + " messages");
+        System.out.println(
+                "Client was connected: " + ChronoUnit.MINUTES.between(clients.get(rel), LocalDateTime.now()) +
+                        " minutes.");
+        System.out.println("Client has sent " + clientMsgs.get(rel) + " bytes via messages");
         synchronized (clients) {
             clients.remove(rel);
             clientMsgs.remove(rel);
         }
         System.out.println("Removed client : " + rel.toString());
-        LocalDateTime leftTime = LocalDateTime.now();
         for (RemoteEventListener el : clients.keySet()) {
             el.notify(new ChatNotification(this, "Client left the chat " + rel, msgCount));
         }
@@ -224,9 +220,9 @@ public class ChatServer
     public void say(RemoteEventListener rel, String msg) throws RemoteException {
         if (msg != null) {
             if (clientMsgs.containsKey(rel)) {
-                clientMsgs.put(rel, clientMsgs.get(rel) + 1);
+                clientMsgs.put(rel, clientMsgs.get(rel) + msg.getBytes(StandardCharsets.UTF_8).length);
             } else {
-                clientMsgs.put(rel, 1);
+                clientMsgs.put(rel, msg.getBytes(StandardCharsets.UTF_8).length);
             }
             addMessage(msg);
         }
@@ -254,20 +250,20 @@ public class ChatServer
     @Override
     public void listClients(RemoteEventListener rel) throws UnknownEventException, RemoteException {
         if (rel != null) {
-          StringBuilder msg = new StringBuilder();
-          for (RemoteEventListener el : clients.keySet()) {
-            msg.append("Clients is connected to the chat: ").append(el.toString());
-          }
+            StringBuilder msg = new StringBuilder();
+            for (RemoteEventListener el : clients.keySet()) {
+                msg.append("Clients is connected to the chat: ").append(el.toString());
+            }
             rel.notify(new ChatNotification(this, msg.toString(), msgCount));
         }
     }
 
     @Override
     public void notifyAll(RemoteEventListener rel) throws UnknownEventException, RemoteException {
-    for (RemoteEventListener el : clients.keySet()) {
-      el.notify(new ChatNotification(this, "Client updated the name " + rel, msgCount));
+        for (RemoteEventListener el : clients.keySet()) {
+            el.notify(new ChatNotification(this, "Client updated the name " + rel, msgCount));
+        }
     }
-  }
 
     /* *** Internal code *** */
 
@@ -314,9 +310,9 @@ public class ChatServer
                 // Send it to all registered listeners.
                 synchronized (clients) {
                     try {
-                      for (RemoteEventListener rel : clients.keySet()) {
-                        rel.notify(note);
-                      }
+                        for (RemoteEventListener rel : clients.keySet()) {
+                            rel.notify(note);
+                        }
                     } catch (UnknownEventException uex) {
                     } catch (RemoteException rex) {
                     }
@@ -395,9 +391,9 @@ public class ChatServer
                 "Usage: {'?'|-h|-help}|[-n server-name]"
         };
 
-      for (String s : msg) {
-        System.out.println(s);
-      }
+        for (String s : msg) {
+            System.out.println(s);
+        }
     }
 
     // The ChatServer main program.
@@ -432,9 +428,9 @@ public class ChatServer
             }
         }
 
-      if (System.getSecurityManager() == null) {
-        System.setSecurityManager(new SecurityManager());
-      }
+        if (System.getSecurityManager() == null) {
+            System.setSecurityManager(new SecurityManager());
+        }
 
         ChatServer cs = new ChatServer(serverName);
         cs.readLoop();
